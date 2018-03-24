@@ -1,0 +1,57 @@
+%define name nginx-module-mruby
+%define nginx_version <%= ENV['NGINX_VERSION'] %>
+%define ngx_mruby_version <%= ENV['NGX_MRUBY_VERSION'] %>
+%define ndk_version <%= ENV['NDK_VERSION'] %>
+%define release <%= ENV['NGINX_RELEASE'].gsub(/\.ngx/, '') %>
+%define version %{ngx_mruby_version}.ngx%{nginx_version}
+%define buildroot %{_tmppath}/%{name}-%{version}-buildroot
+%define moduledir %{buildroot}/etc/nginx/modules
+
+BuildRoot: %{buildroot}
+Summary: Embedded mruby script language for NGINX module
+License: MIT
+Packager: "Ken'ichiro OYAMA"
+Name: %{name}
+Version: %{version}
+Release: %{release}
+Prefix: %{_prefix}
+Group: System Environment/Daemons
+Requires: nginx >= %{nginx_version}, nginx-module-ndk >= %{ndk_version}, policycoreutils-python
+BuildRequires: git
+Source0: https://github.com/matsumotory/ngx_mruby/archive/v%{ngx_mruby_version}.tar.gz
+Source1: http://nginx.org/download/nginx-%{nginx_version}.tar.gz
+Source2: https://github.com/simpl/ngx_devel_kit/archive/v%{ndk_version}.tar.gz
+
+%description
+Embedded mruby script language for NGINX module
+
+%prep
+%setup -q -b 1 -b 2 -n ngx_mruby-%{ngx_mruby_version}
+
+%build
+./configure --with-ngx-src-root=../nginx-%{nginx_version} --enable-dynamic-module
+make mrbgems_config_dynamic
+cd ../nginx-%{nginx_version}
+./configure --with-compat --add-dynamic-module=../ngx_devel_kit-%{ndk_version} --add-dynamic-module=../ngx_mruby-%{ngx_mruby_version}
+make modules
+
+%install
+rm -rf %{buildroot}
+mkdir -p %{moduledir}
+cp ../nginx-%{nginx_version}/objs/ngx_http_mruby_module.so %{moduledir}/
+
+%clean
+[ "%{buildroot}" != "/" ] && rm -rf %{buildroot}
+
+%files
+%defattr(-, root, root)
+/etc/nginx/modules/ngx_http_mruby_module.so
+
+%post
+semanage fcontext -a -t httpd_config_t /etc/nginx/modules/ngx_http_mruby_module.so 2>/dev/null || :
+restorecon -R -v /etc/nginx/modules/ngx_http_mruby_module.so || :
+
+%postun
+if [ $1 -eq 0 ] ; then
+  semanage fcontext -d -t httpd_config_t /etc/nginx/modules/ngx_http_mruby_module.so 2>/dev/null || :
+fi

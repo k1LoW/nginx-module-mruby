@@ -1,0 +1,118 @@
+version: 2
+references:
+  centos7_container_config: &centos7_container_config
+    docker:
+      - image: centos:7
+  centos6_container_config: &centos6_container_config
+    docker:
+      - image: centos:6
+  centos_steps_ngx_mruby: &centos_steps_ngx_mruby
+    steps:
+      - run:
+          name: Install ius
+          command: curl -s https://setup.ius.io/ | bash
+      - run:
+          name: Install packages
+          command: yum -y install rpm-build rpmdevtools yum-utils ruby ruby-devel rake rubygems openssl-devel policycoreutils-python pcre-devel && yum -y groupinstall "Development Tools"
+      - run:
+          name: Replace Git
+          command: yum -y remove git && yum -y install git2u
+      - run:
+          name: Replace Ruby
+          command: |
+            str=`cat /etc/redhat-release`
+            if [[  $str =~ release.6  ]]; then
+              yum -y remove ruby ruby-devel rake rubygems && yum -y install https://github.com/feedforce/ruby-rpm/releases/download/2.4.3/ruby-2.4.3-1.el6.x86_64.rpm
+            fi
+      - run:
+          name: Add official nginx repo
+          command: |
+            cat <<'EOF' > /etc/yum.repos.d/nginx.repo
+            [nginx]
+            name=nginx repo
+            baseurl=http://nginx.org/packages/centos/$releasever/$basearch/
+            gpgcheck=0
+            enabled=1
+            EOF
+      - run:
+          name: Install jq
+          command: curl -L http://stedolan.github.io/jq/download/linux64/jq -o /usr/local/bin/jq && chmod +x /usr/local/bin/jq
+      - checkout
+      - run:
+          name: Install package_cloud
+          command: gem install package_cloud
+      - run:
+          name: Build and release nginx-module-mruby
+          command: rake rpm:ngx_mruby:all
+  centos_steps_ndk: &centos_steps_ndk
+    steps:
+      - run:
+          name: Install ius
+          command: curl -s https://setup.ius.io/ | bash
+      - run:
+          name: Install packages
+          command: yum -y install rpm-build rpmdevtools yum-utils ruby ruby-devel rake rubygems openssl-devel policycoreutils-python pcre-devel && yum -y groupinstall "Development Tools"
+      - run:
+          name: Replace Git
+          command: yum -y remove git && yum -y install git2u
+      - run:
+          name: Replace Ruby
+          command: |
+            str=`cat /etc/redhat-release`
+            if [[  $str =~ release.6  ]]; then
+              yum -y remove ruby ruby-devel rake rubygems && yum -y install https://github.com/feedforce/ruby-rpm/releases/download/2.4.3/ruby-2.4.3-1.el6.x86_64.rpm
+            fi
+      - run:
+          name: Add official nginx repo
+          command: |
+            cat <<'EOF' > /etc/yum.repos.d/nginx.repo
+            [nginx]
+            name=nginx repo
+            baseurl=http://nginx.org/packages/centos/$releasever/$basearch/
+            gpgcheck=0
+            enabled=1
+            EOF
+      - run:
+          name: Install jq
+          command: curl -L http://stedolan.github.io/jq/download/linux64/jq -o /usr/local/bin/jq && chmod +x /usr/local/bin/jq
+      - checkout
+      - run:
+          name: Install package_cloud
+          command: gem install package_cloud
+      - run:
+          name: Build and release nginx-module-ndk
+          command: rake rpm:ndk:all
+jobs:
+  build_ngx_mruby_centos7:
+    <<: *centos7_container_config
+    <<: *centos_steps_ngx_mruby
+  build_ndk_centos7:
+    <<: *centos7_container_config
+    <<: *centos_steps_ndk
+  build_ngx_mruby_centos6:
+    <<: *centos6_container_config
+    <<: *centos_steps_ngx_mruby
+  build_ndk_centos6:
+    <<: *centos6_container_config
+    <<: *centos_steps_ndk
+
+workflows:
+  version: 2
+  build_and_test:
+    jobs:
+      - build_ngx_mruby_centos7
+      - build_ndk_centos7
+      - build_ngx_mruby_centos6
+      - build_ndk_centos6
+  scheduled-workflow:
+    triggers:
+      - schedule:
+          cron: "0 1 * * *"
+          filters:
+            branches:
+              only: master
+    jobs:
+      - build_ngx_mruby_centos7
+      - build_ndk_centos7
+      - build_ngx_mruby_centos6
+      - build_ndk_centos6
